@@ -1,0 +1,7 @@
+{
+    "message_id": "rads",
+    "scaling": "never",
+    "exhaustion": 0.1,
+    "effects": "thorns",
+    "death_message_type": "default"
+}
