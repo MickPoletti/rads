@@ -1,28 +1,17 @@
 package com.mickpoletti.rads;
 
 import java.io.FileNotFoundException;
-import java.rmi.registry.Registry;
 import java.util.ArrayList;
 import java.util.List;
-
-import javax.swing.text.html.parser.Entity;
-
-import org.checkerframework.checker.units.qual.s;
-import org.codehaus.plexus.util.xml.Xpp3DomBuilder.InputLocationBuilder;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.damagesource.DamageTypes;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
@@ -30,7 +19,6 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.AABB;
@@ -44,7 +32,6 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -71,7 +58,8 @@ public class Rads {
     // registered under the "examplemod" namespace
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister
             .create(Registries.CREATIVE_MODE_TAB, MODID);
-
+    public static final String RADS_FILE_STRING = "rads.json";
+    public static final String saveDirectory = System.getProperty("user.dir") + RADS_FILE_STRING;
     // Creates a new Block with the id "examplemod:example_block", combining the
     // namespace and path
     public static final DeferredBlock<Block> EXAMPLE_BLOCK = BLOCKS.registerSimpleBlock("example_block",
@@ -117,8 +105,6 @@ public class Rads {
         BLOCKS.register(modEventBus);
         // Register the Deferred Register to the mod event bus so items get registered
         ITEMS.register(modEventBus);
-        // Register the Deferred Register to the mod event bus so tabs get registered
-        CREATIVE_MODE_TABS.register(modEventBus);
 
         // Register ourselves for server and other game events we are interested in.
         // Note that this is necessary if and only if we want *this* class (ExampleMod)
@@ -126,9 +112,6 @@ public class Rads {
         // Do not add this line if there are no @SubscribeEvent-annotated functions in
         // this class, like onServerStarting() below.
         NeoForge.EVENT_BUS.register(this);
-
-        // Register the item to a creative tab
-        modEventBus.addListener(this::addCreative);
 
         // Register our mod's ModConfigSpec so that FML can create and load the config
         // file for us
@@ -141,20 +124,10 @@ public class Rads {
 
     private void commonSetup(final FMLCommonSetupEvent event) {
         // Some common setup code
-        LOGGER.info("HELLO FROM COMMON SETUP");
-
-        if (Config.logDirtBlock)
-            LOGGER.info("DIRT BLOCK >> {}", BuiltInRegistries.BLOCK.getKey(Blocks.DIRT));
-
+        LOGGER.info("Loading Rads resources...");
         LOGGER.info(Config.magicNumberIntroduction + Config.magicNumber);
 
         Config.items.forEach((item) -> LOGGER.info("ITEM >> {}", item.toString()));
-    }
-
-    // Add the example block item to the building blocks tab
-    private void addCreative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS)
-            event.accept(EXAMPLE_BLOCK_ITEM);
     }
 
     // You can use SubscribeEvent and let the Event Bus discover methods to call
@@ -162,18 +135,22 @@ public class Rads {
     public void onServerStarting(ServerStartingEvent event) throws FileNotFoundException {
         // Do something when the server starts
         LOGGER.info("Loading Radiation Areas...");
-        for (RadiationArea radiationArea : Rads.radiationAreaManager.loadRadiationAreasFromFile("C:\\Users\\mmcdh\\Documents\\fuck.json")) {
+        /* TODO: Add some configuration checks. If this is the first time the server is starting ever
+         * perhaps generate the areas if the user has that setting in place. If not then load from the file.
+         * Also check how this behaves if there is no file there. '
+        */ 
+        for (RadiationArea radiationArea : Rads.radiationAreaManager.loadRadiationAreasFromFile(saveDirectory)) {
             Rads.radiationAreas.add(radiationArea);
         }
     }
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
-        // Do something when the server starts
         LOGGER.info("Saving Radiation Areas...");
-        Rads.radiationAreaManager.save(Rads.radiationAreas, "C:\\Users\\mmcdh\\Documents\\fuck.json");
+        Rads.radiationAreaManager.save(Rads.radiationAreas, saveDirectory);
     }
 
+    // TODO: check if the user is an admin/if they're holding a specific item
     @SubscribeEvent
     public void onRightClick(RightClickBlock event) {
         if (Rads.firstClick && event.getLevel().isClientSide() && event.getHand() == InteractionHand.MAIN_HAND) {
@@ -182,11 +159,10 @@ public class Rads {
         } else if (event.getLevel().isClientSide() && event.getHand() == InteractionHand.MAIN_HAND) {
             Rads.endingPos = event.getPos();
             Rads.firstClick = true;
-            LOGGER.info("HEY FUCK YOU" + radiationAreas);
             Rads.radiationAreas.add(new RadiationArea(new AABB(startingPos.getX(), startingPos.getY()-5,
-                    startingPos.getZ(), endingPos.getX(), endingPos.getY()+5, endingPos.getZ())));
-            
-            Rads.radiationAreaManager.save(Rads.radiationAreas, "C:\\Users\\mmcdh\\Documents\\fuck.json");
+                    startingPos.getZ(), endingPos.getX(), endingPos.getY() + 5, endingPos.getZ())));
+            // TODO: Save should happen only on server side 
+            Rads.radiationAreaManager.save(Rads.radiationAreas, saveDirectory);
         }
     }
 
@@ -194,7 +170,6 @@ public class Rads {
     public void onEntityEnter(PlayerTickEvent.Post event) {
         Player player = event.getEntity();
         if (Rads.radiationAreas.size() > 0 && player.tickCount % 20 == 13) {
-            
             for (RadiationArea area : Rads.radiationAreas) {
                 if (area.isInside(player)) {
                     player.hurt(area.getDamageSource(player), area.getDamageAmount());
@@ -202,7 +177,6 @@ public class Rads {
                 }
             }
         } 
-
     }
 
     // You can use EventBusSubscriber to automatically register all static methods
@@ -212,9 +186,8 @@ public class Rads {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
             // Some client setup code
-            LOGGER.info("HELLO FROM CLIENT SETUP");
-            LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
+            LOGGER.info("This is Rads client setup maybe do something with this in the future?");
+            LOGGER.info("Welcome to Rads, {}", Minecraft.getInstance().getUser().getName());
         }
     }
-
 }
